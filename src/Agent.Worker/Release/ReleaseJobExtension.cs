@@ -434,8 +434,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Release
 
         private void LogDownloadFailureTelemetry(IExecutionContext executionContext, Exception ex)
         {
-            var code = (ex is ArtifactDownloadException || 
-                        ex is ArtifactDirectoryCreationFailedException || 
+            var code = (ex is ArtifactDownloadException ||
+                        ex is ArtifactDirectoryCreationFailedException ||
                         ex is IOException ||
                         ex is UnauthorizedAccessException) ? DownloadArtifactsFailureUserError : DownloadArtifactsFailureSystemError;
             var issue = new Issue

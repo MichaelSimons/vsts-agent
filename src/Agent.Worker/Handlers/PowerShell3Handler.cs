@@ -53,23 +53,21 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             ArgUtil.NotNullOrEmpty(powerShellExe, nameof(powerShellExe));
 
             // Invoke the process.
-            using (var processInvoker = HostContext.CreateService<IProcessInvoker>())
-            {
-                processInvoker.OutputDataReceived += OnDataReceived;
-                processInvoker.ErrorDataReceived += OnDataReceived;
+            StepHost.OutputDataReceived += OnDataReceived;
+            StepHost.ErrorDataReceived += OnDataReceived;
 
-                // Execute the process. Exit code 0 should always be returned.
-                // A non-zero exit code indicates infrastructural failure.
-                // Task failure should be communicated over STDOUT using ## commands.
-                await processInvoker.ExecuteAsync(workingDirectory: scriptDirectory,
-                                                  fileName: powerShellExe,
-                                                  arguments: powerShellExeArgs,
-                                                  environment: Environment,
-                                                  requireExitCodeZero: true,
-                                                  outputEncoding: null,
-                                                  killProcessOnCancel: false,
-                                                  cancellationToken: ExecutionContext.CancellationToken);
-            }
+            // Execute the process. Exit code 0 should always be returned.
+            // A non-zero exit code indicates infrastructural failure.
+            // Task failure should be communicated over STDOUT using ## commands.
+            await StepHost.ExecuteAsync(workingDirectory: scriptDirectory,
+                                              fileName: powerShellExe,
+                                              arguments: powerShellExeArgs,
+                                              environment: Environment,
+                                              requireExitCodeZero: true,
+                                              outputEncoding: null,
+                                              killProcessOnCancel: false,
+                                              cancellationToken: ExecutionContext.CancellationToken);
+
         }
 
         private void OnDataReceived(object sender, ProcessDataReceivedEventArgs e)
