@@ -58,11 +58,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             Trace.Info($"Container options: {executionContext.Container.ContainerCreateOptions}");
             Trace.Info($"Skip container image pull: {executionContext.Container.SkipContainerImagePull}");
 
+#if OS_WINDOWS
             // Check Windows version
             if (Environment.OSVersion.Version < new Version(10, 0, 17093))
             {
                 throw new NotSupportedException($"Running VSTS job in container require Windows 10.0.17093.0 or higher, current Windows version '{Environment.OSVersion.VersionString}'.");
             }
+#endif
 
             // Check docker client/server version
             DockerVersion dockerVersion = await _dockerManger.DockerVersion(executionContext);

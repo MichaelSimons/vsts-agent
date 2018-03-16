@@ -96,15 +96,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             }
 
 #if !OS_WINDOWS
-            // we need cd to the workingDir then run the executable with args.
-            // bash -c "cd \"workingDirectory\"; \"filePath\" \"arguments\""
-            string workingDirectoryEscaped = StringUtil.Format(@"""{0}""", workingDirectory.Replace(@"""", @"\\\"""));
-            string filePathEscaped = StringUtil.Format(@"\""{0}\""", fileName.Replace(@"""", @"\\\"""));
-            string argumentsEscaped = arguments.Replace(@"\", @"\\").Replace(@"""", @"\""");
+            string workingDirectoryEscaped = StringUtil.Format(@"""{0}""", workingDirectory);
+            string filePathEscaped = StringUtil.Format(@"""{0}""", fileName);
+            string argumentsEscaped = arguments;
             string containerExecutionArgs = $"exec -u {Container.CurrentUserId} {envOptions} {Container.ContainerId} -w {workingDirectoryEscaped} {filePathEscaped} {argumentsEscaped}";
 #else
-            // we need cd to the workingDir then run the executable with args.
-            // cmd /c "cd "workingDirectory" && "filePath" "arguments""
             string workingDirectoryEscaped = StringUtil.Format(@"""{0}""", workingDirectory); // -w when docker 17.12 released for windows
             string filePathEscaped = StringUtil.Format(@"""{0}""", fileName);
             string argumentsEscaped = arguments;
