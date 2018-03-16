@@ -42,8 +42,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
         public string ContainerRegistryEndpoint { get; set; }
         public string ContainerCreateOptions { get; set; }
         public bool SkipContainerImagePull { get; set; }
+#if !OS_WINDOWS        
         public string CurrentUserName { get; set; }
         public string CurrentUserId { get; set; }
+#endif        
         public List<MountVolume> MountVolumes
         {
             get
