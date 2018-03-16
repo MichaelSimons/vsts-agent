@@ -99,7 +99,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             string workingDirectoryEscaped = StringUtil.Format(@"""{0}""", workingDirectory);
             string filePathEscaped = StringUtil.Format(@"""{0}""", fileName);
             string argumentsEscaped = arguments;
-            string containerExecutionArgs = $"exec -u {Container.CurrentUserId} {envOptions} {Container.ContainerId} -w {workingDirectoryEscaped} {filePathEscaped} {argumentsEscaped}";
+            string containerExecutionArgs = $"exec -u {Container.CurrentUserId} {envOptions} -w {workingDirectoryEscaped} {Container.ContainerId} {filePathEscaped} {argumentsEscaped}";
 #else
             string workingDirectoryEscaped = StringUtil.Format(@"""{0}""", workingDirectory); // -w when docker 17.12 released for windows
             string filePathEscaped = StringUtil.Format(@"""{0}""", fileName);
