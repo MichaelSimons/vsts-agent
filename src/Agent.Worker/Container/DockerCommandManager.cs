@@ -106,16 +106,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
             }
 
             string dockerMountVolumesArgs = string.Empty;
-            if (container.MountVolumes.Count > 0)
+            foreach (var volume in container.MountVolumes)
             {
-                foreach (var volume in container.MountVolumes)
+                // replace `"` with `\"` and add `"{0}"` to all path.
+                dockerMountVolumesArgs += $" -v \"{volume.VolumePath.Replace("\"", "\\\"")}\":\"{volume.VolumePath.Replace("\"", "\\\"")}\"";
+                if (volume.ReadOnly)
                 {
-                    // replace `"` with `\"` and add `"{0}"` to all path.
-                    dockerMountVolumesArgs += $" -v \"{volume.VolumePath.Replace("\"", "\\\"")}\":\"{volume.VolumePath.Replace("\"", "\\\"")}\"";
-                    if (volume.ReadOnly)
-                    {
-                        dockerMountVolumesArgs += ":ro";
-                    }
+                    dockerMountVolumesArgs += ":ro";
                 }
             }
 
@@ -266,13 +263,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
 
         private async Task<int> ExecuteDockerCommandAsync(IExecutionContext context, string command, string options, IList<string> output)
         {
+            ArgUtil.NotNull(output, nameof(output));
             string arg = $"{command} {options}".Trim();
             context.Command($"{DockerPath} {arg}");
-
-            if (output == null)
-            {
-                output = new List<string>();
-            }
 
             object outputLock = new object();
             var processInvoker = HostContext.CreateService<IProcessInvoker>();

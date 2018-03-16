@@ -248,13 +248,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             {
                 // Make sure required container is already created.
                 ArgUtil.NotNullOrEmpty(ExecutionContext.Container.ContainerId, nameof(ExecutionContext.Container.ContainerId));
-                var containerStepHost = HostContext.CreateService<IContainerStepHost>();
+                var containerStepHost = HostContext.GetService<IContainerStepHost>();
                 containerStepHost.Container = ExecutionContext.Container;
                 stepHost = containerStepHost;
             }
             else
             {
-                stepHost = HostContext.CreateService<IDefaultStepHost>();
+                stepHost = HostContext.GetService<IDefaultStepHost>();
             }
 
             // Create the handler.

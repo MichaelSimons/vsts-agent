@@ -12,9 +12,20 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
     public interface IJobExtension : IExtension
     {
         HostTypes HostType { get; }
-        Task<List<IStep>> InitializeJob(IExecutionContext jobContext, Pipelines.AgentJobRequestMessage message);
+        Task<JobInitializeResult> InitializeJob(IExecutionContext jobContext, Pipelines.AgentJobRequestMessage message);
         string GetRootedPath(IExecutionContext context, string path);
         void ConvertLocalPath(IExecutionContext context, string localPath, out string repoName, out string sourcePath);
+    }
+
+    public sealed class JobInitializeResult
+    {
+        private List<IStep> _preJobSteps = new List<IStep>();
+        private List<IStep> _jobSteps = new List<IStep>();
+        private List<IStep> _postJobSteps = new List<IStep>();
+
+        public List<IStep> PreJobSteps => _preJobSteps;
+        public List<IStep> JobSteps => _jobSteps;
+        public List<IStep> PostJobStep => _postJobSteps;
     }
 
     public abstract class JobExtension : AgentService, IJobExtension
@@ -38,8 +49,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         // download all required tasks.
         // make sure all task's condition inputs are valid.
-        // build up a list of steps for jobrunner. (pre-job + job + post-job)
-        public async Task<List<IStep>> InitializeJob(IExecutionContext jobContext, Pipelines.AgentJobRequestMessage message)
+        // build up three list of steps for jobrunner. (pre-job, job, post-job)
+        public async Task<JobInitializeResult> InitializeJob(IExecutionContext jobContext, Pipelines.AgentJobRequestMessage message)
         {
             Trace.Entering();
             ArgUtil.NotNull(jobContext, nameof(jobContext));
@@ -48,9 +59,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             // create a new timeline record node for 'Initialize job'
             IExecutionContext context = jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("InitializeJob"), nameof(JobExtension));
 
-            List<IStep> preJobSteps = new List<IStep>();
-            List<IStep> jobSteps = new List<IStep>();
-            List<IStep> postJobSteps = new List<IStep>();
+            JobInitializeResult initResult = new JobInitializeResult();
             using (var register = jobContext.CancellationToken.Register(() => { context.CancelToken(); }))
             {
                 try
@@ -103,13 +112,21 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                         prepareStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), prepareStep.DisplayName, nameof(ManagementScriptStep));
                         prepareStep.AccessToken = systemConnection.Authorization.Parameters["AccessToken"];
                         prepareStep.Condition = ExpressionManager.Succeeded;
-                        preJobSteps.Add(prepareStep);
+                        initResult.PreJobSteps.Add(prepareStep);
                     }
 #endif
 
                     // build up 3 lists of steps, pre-job, job, post-job
                     Stack<IStep> postJobStepsBuilder = new Stack<IStep>();
                     Dictionary<Guid, Variables> taskVariablesMapping = new Dictionary<Guid, Variables>();
+
+                    if (context.Container != null)
+                    {
+                        var containerProvider = HostContext.GetService<IContainerOperationProvider>();
+                        initResult.PreJobSteps.Add(containerProvider.GetContainerStartStep(jobContext.Container));
+                        postJobStepsBuilder.Push(containerProvider.GetContainerStopStep(jobContext.Container));
+                    }
+
                     foreach (var task in message.Steps.Where(x => x.Type == Pipelines.StepType.Task).OfType<Pipelines.TaskStep>())
                     {
                         var taskDefinition = taskManager.Load(task);
@@ -125,7 +142,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                             taskRunner.Task = task;
                             taskRunner.Stage = JobRunStage.PreJob;
                             taskRunner.Condition = ExpressionManager.Succeeded;
-                            preJobSteps.Add(taskRunner);
+                            initResult.PreJobSteps.Add(taskRunner);
                         }
 
                         // Add execution steps from Tasks
@@ -136,7 +153,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                             taskRunner.Task = task;
                             taskRunner.Stage = JobRunStage.Main;
                             taskRunner.Condition = taskConditionMap[task.Id];
-                            jobSteps.Add(taskRunner);
+                            initResult.JobSteps.Add(taskRunner);
                         }
 
                         // Add post-job steps from Tasks
@@ -151,14 +168,24 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                         }
                     }
 
-                    if (context.Container != null)
+                    // Add pre-job step from Extension
+                    Trace.Info("Adding pre-job step from extension.");
+                    var extensionPreJobStep = GetExtensionPreJobStep(jobContext);
+                    if (extensionPreJobStep != null)
                     {
-                        var containerProvider = HostContext.GetService<IContainerOperationProvider>();
-                        preJobSteps.Insert(0, containerProvider.GetContainerStartStep(jobContext));
+                        initResult.PreJobSteps.Add(extensionPreJobStep);
                     }
 
-                    // create task execution context for all pre-job steps from task
-                    foreach (var step in preJobSteps)
+                    // Add post-job step from Extension
+                    Trace.Info("Adding post-job step from extension.");
+                    var extensionPostJobStep = GetExtensionPostJobStep(jobContext);
+                    if (extensionPostJobStep != null)
+                    {
+                        postJobStepsBuilder.Push(extensionPostJobStep);
+                    }
+
+                    // create execution context for all pre-job steps
+                    foreach (var step in initResult.PreJobSteps)
                     {
 #if OS_WINDOWS
                         if (step is ManagementScriptStep)
@@ -166,27 +193,23 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                             continue;
                         }
 #endif
-
                         if (step is JobExtensionRunner)
                         {
-                            continue;
+                            JobExtensionRunner extensionStep = step as JobExtensionRunner;
+                            ArgUtil.NotNull(extensionStep, extensionStep.DisplayName);
+                            Guid stepId = Guid.NewGuid();
+                            extensionStep.ExecutionContext = jobContext.CreateChild(stepId, extensionStep.DisplayName, stepId.ToString("N"));
                         }
-
-                        ITaskRunner taskStep = step as ITaskRunner;
-                        ArgUtil.NotNull(taskStep, step.DisplayName);
-                        taskStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("PreJob", taskStep.DisplayName), taskStep.Task.Name, taskVariablesMapping[taskStep.Task.Id]);
-                    }
-
-                    // Add pre-job step from Extension
-                    Trace.Info("Adding pre-job step from extension.");
-                    var extensionPreJobStep = GetExtensionPreJobStep(jobContext);
-                    if (extensionPreJobStep != null)
-                    {
-                        preJobSteps.Add(extensionPreJobStep);
+                        else if (step is ITaskRunner)
+                        {
+                            ITaskRunner taskStep = step as ITaskRunner;
+                            ArgUtil.NotNull(taskStep, step.DisplayName);
+                            taskStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("PreJob", taskStep.DisplayName), taskStep.Task.Name, taskVariablesMapping[taskStep.Task.Id]);
+                        }
                     }
 
                     // create task execution context for all job steps from task
-                    foreach (var step in jobSteps)
+                    foreach (var step in initResult.JobSteps)
                     {
                         ITaskRunner taskStep = step as ITaskRunner;
                         ArgUtil.NotNull(taskStep, step.DisplayName);
@@ -197,29 +220,25 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     Trace.Info("Adding post-job steps from tasks.");
                     while (postJobStepsBuilder.Count > 0)
                     {
-                        postJobSteps.Add(postJobStepsBuilder.Pop());
+                        initResult.PostJobStep.Add(postJobStepsBuilder.Pop());
                     }
 
                     // create task execution context for all post-job steps from task
-                    foreach (var step in postJobSteps)
+                    foreach (var step in initResult.PostJobStep)
                     {
-                        ITaskRunner taskStep = step as ITaskRunner;
-                        ArgUtil.NotNull(taskStep, step.DisplayName);
-                        taskStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("PostJob", taskStep.DisplayName), taskStep.Task.Name, taskVariablesMapping[taskStep.Task.Id]);
-                    }
-
-                    // Add post-job step from Extension
-                    Trace.Info("Adding post-job step from extension.");
-                    var extensionPostJobStep = GetExtensionPostJobStep(jobContext);
-                    if (extensionPostJobStep != null)
-                    {
-                        postJobSteps.Add(extensionPostJobStep);
-                    }
-
-                    if (context.Container != null)
-                    {
-                        var containerProvider = HostContext.GetService<IContainerOperationProvider>();
-                        postJobSteps.Add(containerProvider.GetContainerStopStep(jobContext));
+                        if (step is JobExtensionRunner)
+                        {
+                            JobExtensionRunner extensionStep = step as JobExtensionRunner;
+                            ArgUtil.NotNull(extensionStep, extensionStep.DisplayName);
+                            Guid stepId = Guid.NewGuid();
+                            extensionStep.ExecutionContext = jobContext.CreateChild(stepId, extensionStep.DisplayName, stepId.ToString("N"));
+                        }
+                        else if (step is ITaskRunner)
+                        {
+                            ITaskRunner taskStep = step as ITaskRunner;
+                            ArgUtil.NotNull(taskStep, step.DisplayName);
+                            taskStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("PostJob", taskStep.DisplayName), taskStep.Task.Name, taskVariablesMapping[taskStep.Task.Id]);
+                        }
                     }
 
 #if OS_WINDOWS
@@ -238,15 +257,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                         finallyStep.ExecutionContext = jobContext.CreateChild(Guid.NewGuid(), finallyStep.DisplayName, nameof(ManagementScriptStep));
                         finallyStep.Condition = ExpressionManager.Always;
                         finallyStep.AccessToken = systemConnection.Authorization.Parameters["AccessToken"];
-                        postJobSteps.Add(finallyStep);
+                        initResult.PostJobStep.Add(finallyStep);
                     }
 #endif
-                    List<IStep> result = new List<IStep>();
-                    result.AddRange(preJobSteps);
-                    result.AddRange(jobSteps);
-                    result.AddRange(postJobSteps);
-
-                    return result;
+                    return initResult;
                 }
                 catch (OperationCanceledException ex) when (jobContext.CancellationToken.IsCancellationRequested)
                 {

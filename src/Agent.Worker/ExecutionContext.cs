@@ -372,7 +372,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 imageName = Environment.GetEnvironmentVariable("_PREVIEW_VSTS_DOCKER_IMAGE");
             }
 
-            if (!string.IsNullOrEmpty(imageName) && message.Resources.Containers.Count == 0)
+            if (!string.IsNullOrEmpty(imageName) &&
+                string.IsNullOrEmpty(message.JobContainer))
             {
                 var dockerContainer = new Pipelines.ContainerReference()
                 {
@@ -383,7 +384,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             }
             else
             {
-                Container = new ContainerInfo(message.Resources.Containers.Single());
+                Container = new ContainerInfo(message.Resources.Containers.Single(x => string.Equals(x.Name, message.JobContainer, StringComparison.OrdinalIgnoreCase)));
             }
 
             // Proxy variables

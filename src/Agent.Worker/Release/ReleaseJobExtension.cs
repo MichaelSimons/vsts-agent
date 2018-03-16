@@ -38,11 +38,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Release
             if (ReleaseArtifacts.Any())
             {
                 return new JobExtensionRunner(
-                    context: jobContext.CreateChild(Guid.NewGuid(), StringUtil.Loc("DownloadArtifacts"),
-                        nameof(ReleaseJobExtension)),
                     runAsync: DownloadArtifactsAndCommitsAsync,
                     condition: ExpressionManager.Succeeded,
-                    displayName: StringUtil.Loc("DownloadArtifacts"));
+                    displayName: StringUtil.Loc("DownloadArtifacts"),
+                    data: null);
             }
 
             return null;
@@ -110,7 +109,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Release
             sourcePath = string.Empty;
         }
 
-        private async Task DownloadArtifactsAndCommitsAsync(IExecutionContext executionContext)
+        private async Task DownloadArtifactsAndCommitsAsync(IExecutionContext executionContext, object data)
         {
             Trace.Entering();
 

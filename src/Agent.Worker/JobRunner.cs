@@ -208,7 +208,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 try
                 {
                     Trace.Info("Initialize job. Getting all job steps.");
-                    jobSteps = await jobExtension.InitializeJob(jobContext, message);
+                    var initializeResult = await jobExtension.InitializeJob(jobContext, message);
+                    jobSteps.AddRange(initializeResult.PreJobSteps);
+                    jobSteps.AddRange(initializeResult.JobSteps);
+                    jobSteps.AddRange(initializeResult.PostJobStep);
                 }
                 catch (OperationCanceledException ex) when (jobContext.CancellationToken.IsCancellationRequested)
                 {
