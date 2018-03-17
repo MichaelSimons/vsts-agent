@@ -382,9 +382,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 dockerContainer.Data["image"] = imageName;
                 Container = new ContainerInfo(dockerContainer);
             }
-            else
+            else if (!string.IsNullOrEmpty(message.JobContainer))
             {
                 Container = new ContainerInfo(message.Resources.Containers.Single(x => string.Equals(x.Name, message.JobContainer, StringComparison.OrdinalIgnoreCase)));
+            }
+            else
+            {
+                Container = null;
             }
 
             // Proxy variables
