@@ -158,6 +158,25 @@ namespace AgentService
             newProcess.StartInfo.RedirectStandardInput = true;
             newProcess.StartInfo.RedirectStandardOutput = true;
             newProcess.StartInfo.RedirectStandardError = true;
+
+            // Add environment variables from .env file
+            string agentRootLocation = Path.GetDirectoryName(Path.GetDirectoryName(agentExeLocation));
+            string envFile = Path.Combine(agentRootLocation, ".env");
+            if (File.Exists(envFile))
+            {
+                var envs = File.ReadAllLines(envFile);
+                foreach (var env in envs)
+                {
+                    if (!string.IsNullOrEmpty(env) && env.IndexOf('=') > 0)
+                    {
+                        string envKey = env.Substring(0, env.IndexOf('='));
+                        string envValue = env.Substring(env.IndexOf('=') + 1);
+
+                        newProcess.StartInfo.EnvironmentVariables[envKey] = envValue;
+                    }
+                }
+            }
+
             return newProcess;
         }
 
