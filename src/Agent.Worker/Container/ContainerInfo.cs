@@ -35,17 +35,18 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
 
         private List<MountVolume> _mountVolumes;
 
-        public string ContainerImage { get; set; }
         public string ContainerId { get; set; }
-        public string ContainerName { get; set; }
         public string ContainerDisplayName { get; set; }
+        public string ContainerNetwork { get; set; }
+        public string ContainerImage { get; set; }
+        public string ContainerName { get; set; }
         public string ContainerRegistryEndpoint { get; set; }
         public string ContainerCreateOptions { get; set; }
         public bool SkipContainerImagePull { get; set; }
-#if !OS_WINDOWS        
+#if !OS_WINDOWS
         public string CurrentUserName { get; set; }
         public string CurrentUserId { get; set; }
-#endif        
+#endif
         public List<MountVolume> MountVolumes
         {
             get

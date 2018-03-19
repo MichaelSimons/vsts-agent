@@ -132,7 +132,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     }
                 }
 
-                // Mount folder into container            
+                // Mount folder into container
                 container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_TempDirectory));
                 container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_ToolsDirectory));
 #if OS_WINDOWS
@@ -152,12 +152,26 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 container.MountVolumes.Add(new MountVolume(taskKeyFile));
 #endif
 
-                int createExitCode = await _dockerManger.DockerCreate(executionContext, container);
-                if (createExitCode != 0)
+                if (string.IsNullOrEmpty(container.ContainerNetwork))
                 {
-                    executionContext.Error($"Docker create fail with exit code {createExitCode}");
+                    // Create local docker network for this job to avoid port conflict when multiple agents run on same machine.
+                    container.ContainerNetwork = $"vsts_network_{Guid.NewGuid().ToString("N")}";
+                    int networkExitCode = await _dockerManger.DockerNetworkCreate(executionContext, container.ContainerNetwork);
+                    if (networkExitCode != 0)
+                    {
+                        executionContext.Error($"Docker network create fail with exit code {networkExitCode}");
+                    }
+
+                    // Expose docker network to env
+                    executionContext.Variables.Set(Constants.Variables.Agent.ContainerNetwork, container.ContainerNetwork);
                 }
 
+                container.ContainerId = await _dockerManger.DockerCreate(context: executionContext,
+                                                                         displayName: container.ContainerDisplayName,
+                                                                         image: container.ContainerImage,
+                                                                         mountVolumes: container.MountVolumes,
+                                                                         network: container.ContainerNetwork,
+                                                                         options: container.ContainerCreateOptions);
                 ArgUtil.NotNullOrEmpty(container.ContainerId, nameof(container.ContainerId));
                 executionContext.Variables.Set(Constants.Variables.Agent.ContainerId, container.ContainerId);
 
@@ -280,10 +294,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     executionContext.Error($"Docker stop fail with exit code {stopExitCode}");
                 }
 
-                int removeExitCode = await _dockerManger.DockerNetworkRemove(executionContext);
-                if (removeExitCode != 0)
+                if (!string.IsNullOrEmpty(container.ContainerNetwork))
                 {
-                    executionContext.Error($"Docker network rm fail with exit code {removeExitCode}");
+                    int removeExitCode = await _dockerManger.DockerNetworkRemove(executionContext, container.ContainerNetwork);
+                    if (removeExitCode != 0)
+                    {
+                        executionContext.Error($"Docker network rm fail with exit code {removeExitCode}");
+                    }
                 }
             }
         }

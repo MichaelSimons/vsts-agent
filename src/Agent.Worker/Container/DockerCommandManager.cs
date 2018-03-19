@@ -16,18 +16,17 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
         Task<int> DockerLogin(IExecutionContext context, string server, string username, string password);
         Task<int> DockerLogout(IExecutionContext context, string server);
         Task<int> DockerPull(IExecutionContext context, string image);
-        Task<int> DockerCreate(IExecutionContext context, ContainerInfo container);
+        Task<string> DockerCreate(IExecutionContext context, string displayName, string image, List<MountVolume> mountVolumes, string network, string options);
         Task<int> DockerStart(IExecutionContext context, string containerId);
         Task<int> DockerStop(IExecutionContext context, string containerId);
-        Task<int> DockerNetworkRemove(IExecutionContext context);
+        Task<int> DockerNetworkCreate(IExecutionContext context, string network);
+        Task<int> DockerNetworkRemove(IExecutionContext context, string network);
         Task<int> DockerExec(IExecutionContext context, string containerId, string options, string command);
         Task<int> DockerExec(IExecutionContext context, string containerId, string options, string command, List<string> outputs);
     }
 
     public class DockerCommandManager : AgentService, IDockerCommandManager
     {
-        private string _dockerNetwork;
-
         public string DockerPath { get; private set; }
 
         public override void Initialize(IHostContext hostContext)
@@ -42,11 +41,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
         {
             string serverVersionStr = (await ExecuteDockerCommandAsync(context, "version", "--format '{{.Server.Version}}'")).FirstOrDefault();
             ArgUtil.NotNullOrEmpty(serverVersionStr, "Docker.Server.Version");
-            context.Output($"{serverVersionStr}");
+            context.Output($"Docker daemon version: {serverVersionStr}");
 
             string clientVersionStr = (await ExecuteDockerCommandAsync(context, "version", "--format '{{.Client.Version}}'")).FirstOrDefault();
             ArgUtil.NotNullOrEmpty(serverVersionStr, "Docker.Client.Version");
-            context.Output($"{clientVersionStr}");
+            context.Output($"Docker client version: {clientVersionStr}");
 
             // we interested about major.minor.patch version
             Regex verRegex = new Regex("\\d+\\.\\d+(\\.\\d+)?", RegexOptions.IgnoreCase);
@@ -89,47 +88,29 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
             return await ExecuteDockerCommandAsync(context, "pull", image, context.CancellationToken);
         }
 
-        public async Task<int> DockerCreate(IExecutionContext context, ContainerInfo container)
+        public async Task<string> DockerCreate(IExecutionContext context, string displayName, string image, List<MountVolume> mountVolumes, string network, string options)
         {
-            // Create local docker network share across all following docker create
-            if (string.IsNullOrEmpty(_dockerNetwork))
-            {
-                _dockerNetwork = $"vsts_network_{Guid.NewGuid().ToString("D")}";
-                int networkExitCode = await ExecuteDockerCommandAsync(context, "network", $"create {_dockerNetwork}", context.CancellationToken);
-                if (networkExitCode != 0)
-                {
-                    throw new InvalidOperationException($"Docker network create failed with exit code {networkExitCode}");
-                }
-
-                // Expose docker network to env
-                context.Variables.Set(Constants.Variables.Agent.ContainerNetwork, _dockerNetwork);
-            }
-
             string dockerMountVolumesArgs = string.Empty;
-            foreach (var volume in container.MountVolumes)
+            if (mountVolumes?.Count > 0)
             {
-                // replace `"` with `\"` and add `"{0}"` to all path.
-                dockerMountVolumesArgs += $" -v \"{volume.VolumePath.Replace("\"", "\\\"")}\":\"{volume.VolumePath.Replace("\"", "\\\"")}\"";
-                if (volume.ReadOnly)
+                foreach (var volume in mountVolumes)
                 {
-                    dockerMountVolumesArgs += ":ro";
+                    // replace `"` with `\"` and add `"{0}"` to all path.
+                    dockerMountVolumesArgs += $" -v \"{volume.VolumePath.Replace("\"", "\\\"")}\":\"{volume.VolumePath.Replace("\"", "\\\"")}\"";
+                    if (volume.ReadOnly)
+                    {
+                        dockerMountVolumesArgs += ":ro";
+                    }
                 }
             }
 
 #if !OS_WINDOWS
-            string dockerArgs = $"--name {container.ContainerDisplayName} --rm --network={_dockerNetwork} -v /var/run/docker.sock:/var/run/docker.sock {container.ContainerCreateOptions} {dockerMountVolumesArgs} {container.ContainerImage} sleep 999d";
+            string dockerArgs = $"--name {displayName} --rm --network={network} -v /var/run/docker.sock:/var/run/docker.sock {options} {dockerMountVolumesArgs} {image} sleep 999d";
 #else
-            string dockerArgs = $"--name {container.ContainerDisplayName} --rm {container.ContainerCreateOptions} {dockerMountVolumesArgs} {container.ContainerImage} ping -t 127.0.0.1";  // add -v '\\.\pipe\docker_engine:\\.\pipe\docker_engine' when 17.09 available 
+            string dockerArgs = $"--name {displayName} --rm --network={network} {options} {dockerMountVolumesArgs} {image} ping -t 127.0.0.1";  // add -v '\\.\pipe\docker_engine:\\.\pipe\docker_engine' when 17.09 available 
 #endif
-            List<string> outputStrings = new List<string>();
-            int dockerCreateExitCode = await ExecuteDockerCommandAsync(context, "create", dockerArgs, outputStrings);
-            context.Output($"{string.Join(Environment.NewLine, outputStrings)}");
-            if (dockerCreateExitCode == 0)
-            {
-                container.ContainerId = outputStrings.First(x => !string.IsNullOrEmpty(x));
-            }
-
-            return dockerCreateExitCode;
+            List<string> outputStrings = await ExecuteDockerCommandAsync(context, "create", dockerArgs);
+            return outputStrings.FirstOrDefault();
         }
 
         public async Task<int> DockerStart(IExecutionContext context, string containerId)
@@ -142,9 +123,14 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
             return await ExecuteDockerCommandAsync(context, "stop", containerId, context.CancellationToken);
         }
 
-        public async Task<int> DockerNetworkRemove(IExecutionContext context)
+        public async Task<int> DockerNetworkCreate(IExecutionContext context, string network)
         {
-            return await ExecuteDockerCommandAsync(context, "network", $"rm {_dockerNetwork}", context.CancellationToken);
+            return await ExecuteDockerCommandAsync(context, "network", $"create {network}", context.CancellationToken);
+        }
+
+        public async Task<int> DockerNetworkRemove(IExecutionContext context, string network)
+        {
+            return await ExecuteDockerCommandAsync(context, "network", $"rm {network}", context.CancellationToken);
         }
 
         public async Task<int> DockerExec(IExecutionContext context, string containerId, string options, string command)
@@ -234,6 +220,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                     lock (outputLock)
                     {
                         output.Add(message.Data);
+                        context.Output(message.Data);
                     }
                 }
             };
@@ -245,6 +232,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                     lock (outputLock)
                     {
                         output.Add(message.Data);
+                        context.Output(message.Data);
                     }
                 }
             };
@@ -259,46 +247,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                             cancellationToken: CancellationToken.None);
 
             return output;
-        }
-
-        private async Task<int> ExecuteDockerCommandAsync(IExecutionContext context, string command, string options, IList<string> output)
-        {
-            ArgUtil.NotNull(output, nameof(output));
-            string arg = $"{command} {options}".Trim();
-            context.Command($"{DockerPath} {arg}");
-
-            object outputLock = new object();
-            var processInvoker = HostContext.CreateService<IProcessInvoker>();
-            processInvoker.OutputDataReceived += delegate (object sender, ProcessDataReceivedEventArgs message)
-            {
-                if (!string.IsNullOrEmpty(message.Data))
-                {
-                    lock (outputLock)
-                    {
-                        output.Add(message.Data);
-                    }
-                }
-            };
-
-            processInvoker.ErrorDataReceived += delegate (object sender, ProcessDataReceivedEventArgs message)
-            {
-                if (!string.IsNullOrEmpty(message.Data))
-                {
-                    lock (outputLock)
-                    {
-                        output.Add(message.Data);
-                    }
-                }
-            };
-
-            return await processInvoker.ExecuteAsync(
-                            workingDirectory: HostContext.GetDirectory(WellKnownDirectory.Work),
-                            fileName: DockerPath,
-                            arguments: arg,
-                            environment: null,
-                            requireExitCodeZero: false,
-                            outputEncoding: null,
-                            cancellationToken: CancellationToken.None);
         }
     }
 }
