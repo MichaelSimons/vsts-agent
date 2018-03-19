@@ -133,14 +133,14 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 }
 
                 // Mount folder into container
-                container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_TempDirectory));
-                container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_ToolsDirectory));
 #if OS_WINDOWS
                 container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Externals)));
                 container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Work)));
 #else
-                container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Tasks)));
                 container.MountVolumes.Add(new MountVolume(Path.GetDirectoryName(executionContext.Variables.System_DefaultWorkingDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))));
+                container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_TempDirectory));
+                container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_ToolsDirectory));
+                container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Tasks)));
                 container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Externals), true));
                 
                 // Ensure .taskkey file exist so we can mount it.

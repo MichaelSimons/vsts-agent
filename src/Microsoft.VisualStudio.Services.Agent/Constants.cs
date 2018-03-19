@@ -45,7 +45,7 @@ namespace Microsoft.VisualStudio.Services.Agent
 
         public static class Agent
         {
-            public static readonly string Version = "2.131.0";
+            public static readonly string Version = "2.133.0"; // Change this back
 
 #if OS_LINUX
             public static readonly OSPlatform Platform = OSPlatform.Linux;
