@@ -44,6 +44,15 @@ namespace Microsoft.VisualStudio.Services.Agent
             CancellationToken cancellationToken);
 
         Task<int> ExecuteAsync(
+                    string workingDirectory,
+                    string fileName,
+                    string arguments,
+                    IDictionary<string, string> environment,
+                    bool requireExitCodeZero,
+                    Encoding outputEncoding,
+                    bool killProcessOnCancel,
+                    CancellationToken cancellationToken);
+        Task<int> ExecuteAsync(
             string workingDirectory,
             string fileName,
             string arguments,
@@ -51,6 +60,7 @@ namespace Microsoft.VisualStudio.Services.Agent
             bool requireExitCodeZero,
             Encoding outputEncoding,
             bool killProcessOnCancel,
+            IList<string> contentsToStandardIn,
             CancellationToken cancellationToken);
     }
 
@@ -125,9 +135,32 @@ namespace Microsoft.VisualStudio.Services.Agent
                 fileName: fileName,
                 arguments: arguments,
                 environment: environment,
+                contentsToStandardIn: null,
                 requireExitCodeZero: requireExitCodeZero,
                 outputEncoding: outputEncoding,
                 killProcessOnCancel: false,
+                cancellationToken: cancellationToken);
+        }
+
+        public Task<int> ExecuteAsync(
+            string workingDirectory,
+            string fileName,
+            string arguments,
+            IDictionary<string, string> environment,
+            bool requireExitCodeZero,
+            Encoding outputEncoding,
+            bool killProcessOnCancel,
+            CancellationToken cancellationToken)
+        {
+            return ExecuteAsync(
+                workingDirectory: workingDirectory,
+                fileName: fileName,
+                arguments: arguments,
+                environment: environment,
+                requireExitCodeZero: requireExitCodeZero,
+                outputEncoding: outputEncoding,
+                killProcessOnCancel: killProcessOnCancel,
+                contentsToStandardIn: null,
                 cancellationToken: cancellationToken);
         }
 
@@ -139,6 +172,7 @@ namespace Microsoft.VisualStudio.Services.Agent
             bool requireExitCodeZero,
             Encoding outputEncoding,
             bool killProcessOnCancel,
+            IList<string> contentsToStandardIn,
             CancellationToken cancellationToken)
         {
             ArgUtil.Null(_proc, nameof(_proc));
@@ -207,10 +241,19 @@ namespace Microsoft.VisualStudio.Services.Agent
             _stopWatch = Stopwatch.StartNew();
             _proc.Start();
 
-            // Close the input stream. This is done to prevent commands from blocking the build waiting for input from the user.
             if (_proc.StartInfo.RedirectStandardInput)
             {
-                _proc.StandardInput.Dispose();
+                // Write contents to STDIN
+                if (contentsToStandardIn?.Count > 0)
+                {
+                    foreach (var content in contentsToStandardIn)
+                    {
+                        _proc.StandardInput.WriteLine(content);
+                    }
+                }
+
+                // Close the input stream. This is done to prevent commands from blocking the build waiting for input from the user.
+                _proc.StandardInput.Close();
             }
 
             // Start the standard error notifications, if appropriate.

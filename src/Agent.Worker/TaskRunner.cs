@@ -251,6 +251,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 var containerStepHost = HostContext.GetService<IContainerStepHost>();
                 containerStepHost.Container = ExecutionContext.Container;
                 stepHost = containerStepHost;
+
+                // Only node handler and powershell3 handler support running inside container.
+                if (!(handlerData is NodeHandlerData) &&
+                    !(handlerData is PowerShell3HandlerData))
+                {
+                    throw new NotSupportedException(String.Format("Task '{0}' is using legacy execution handler '{1}' which is not supported in container execution flow.", definition.Data.FriendlyName, handlerData.GetType().ToString()));
+                }
             }
             else
             {

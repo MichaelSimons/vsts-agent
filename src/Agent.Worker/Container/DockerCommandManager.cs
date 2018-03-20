@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -75,7 +76,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
 
         public async Task<int> DockerLogin(IExecutionContext context, string server, string username, string password)
         {
-            return await ExecuteDockerCommandAsync(context, "login", $"--username \"{username}\" --password \"{password}\" {server}", context.CancellationToken);
+            return await ExecuteDockerCommandAsync(context, "login", $"--username \"{username}\" --password-stdin {server}", new List<string>() { password }, context.CancellationToken);
         }
 
         public async Task<int> DockerLogout(IExecutionContext context, string server)
@@ -104,10 +105,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                 }
             }
 
+            string node = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals), "node", "bin", $"node{IOUtil.ExeExtension}");
+            string nodeEscaped = node.Replace("\"", "\\\"");
+            string sleepCommand = "\"{nodeEscaped}\" -e \"setInterval(function(){}, 24 * 60 * 60 * 1000);\"";
 #if !OS_WINDOWS
-            string dockerArgs = $"--name {displayName} --rm --network={network} -v /var/run/docker.sock:/var/run/docker.sock {options} {dockerMountVolumesArgs} {image} sleep 999d";
+            string dockerArgs = $"--name {displayName} --rm --network={network} -v /var/run/docker.sock:/var/run/docker.sock {options} {dockerMountVolumesArgs} {image} {sleepCommand}";
 #else
-            string dockerArgs = $"--name {displayName} --rm --network={network} {options} {dockerMountVolumesArgs} {image} ping -t 127.0.0.1";  // add -v '\\.\pipe\docker_engine:\\.\pipe\docker_engine' when 17.09 available 
+            string dockerArgs = $"--name {displayName} --rm --network={network} {options} {dockerMountVolumesArgs} {image} {sleepCommand}";  // add -v '\\.\pipe\docker_engine:\\.\pipe\docker_engine' when 17.09 available 
 #endif
             List<string> outputStrings = await ExecuteDockerCommandAsync(context, "create", dockerArgs);
             return outputStrings.FirstOrDefault();
@@ -179,7 +183,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                             cancellationToken: CancellationToken.None);
         }
 
-        private async Task<int> ExecuteDockerCommandAsync(IExecutionContext context, string command, string options, CancellationToken cancellationToken = default(CancellationToken))
+        private Task<int> ExecuteDockerCommandAsync(IExecutionContext context, string command, string options, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return ExecuteDockerCommandAsync(context, command, options, null, cancellationToken);
+        }
+
+        private async Task<int> ExecuteDockerCommandAsync(IExecutionContext context, string command, string options, IList<string> standardIns = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             string arg = $"{command} {options}".Trim();
             context.Command($"{DockerPath} {arg}");
@@ -202,6 +211,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Container
                 environment: null,
                 requireExitCodeZero: false,
                 outputEncoding: null,
+                killProcessOnCancel: false,
+                contentsToStandardIn: standardIns,
                 cancellationToken: cancellationToken);
         }
 

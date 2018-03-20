@@ -80,7 +80,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     Trace.Info("Parsing all task's condition inputs.");
                     var expression = HostContext.GetService<IExpressionManager>();
                     Dictionary<Guid, INode> taskConditionMap = new Dictionary<Guid, INode>();
-                    foreach (var task in message.Steps.Where(x => x.Type == Pipelines.StepType.Task))
+                    foreach (var task in message.Steps.OfType<Pipelines.TaskStep>())
                     {
                         INode condition;
                         if (!string.IsNullOrEmpty(task.Condition))
@@ -123,11 +123,17 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     if (context.Container != null)
                     {
                         var containerProvider = HostContext.GetService<IContainerOperationProvider>();
-                        initResult.PreJobSteps.Add(containerProvider.GetContainerStartStep(jobContext.Container));
-                        postJobStepsBuilder.Push(containerProvider.GetContainerStopStep(jobContext.Container));
+                        initResult.PreJobSteps.Add(new JobExtensionRunner(runAsync: containerProvider.StartContainerAsync,
+                                                                          condition: ExpressionManager.Succeeded,
+                                                                          displayName: StringUtil.Loc("InitializeContainer"),
+                                                                          data: (object)jobContext.Container));
+                        postJobStepsBuilder.Push(new JobExtensionRunner(runAsync: containerProvider.StopContainerAsync,
+                                                                        condition: ExpressionManager.Always,
+                                                                        displayName: StringUtil.Loc("StopContainer"),
+                                                                        data: (object)jobContext.Container));
                     }
 
-                    foreach (var task in message.Steps.Where(x => x.Type == Pipelines.StepType.Task).OfType<Pipelines.TaskStep>())
+                    foreach (var task in message.Steps.OfType<Pipelines.TaskStep>())
                     {
                         var taskDefinition = taskManager.Load(task);
 
@@ -141,7 +147,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                             var taskRunner = HostContext.CreateService<ITaskRunner>();
                             taskRunner.Task = task;
                             taskRunner.Stage = JobRunStage.PreJob;
-                            taskRunner.Condition = ExpressionManager.Succeeded;
+                            taskRunner.Condition = taskConditionMap[task.Id];
                             initResult.PreJobSteps.Add(taskRunner);
                         }
 

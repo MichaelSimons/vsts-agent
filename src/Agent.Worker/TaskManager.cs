@@ -9,7 +9,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.TeamFoundation.DistributedTask.Orchestration.Server.Expressions;
 
 namespace Microsoft.VisualStudio.Services.Agent.Worker
 {
@@ -30,7 +29,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
             executionContext.Output(StringUtil.Loc("EnsureTasksExist"));
 
-            IEnumerable<Pipelines.TaskStep> tasks = steps.Where(x => x.Type == Pipelines.StepType.Task).OfType<Pipelines.TaskStep>();
+            IEnumerable<Pipelines.TaskStep> tasks = steps.OfType<Pipelines.TaskStep>();
 
             //remove duplicate, disabled and built-in tasks
             IEnumerable<Pipelines.TaskStep> uniqueTasks =

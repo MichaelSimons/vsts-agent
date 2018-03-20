@@ -15,8 +15,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
     [ServiceLocator(Default = typeof(ContainerOperationProvider))]
     public interface IContainerOperationProvider : IAgentService
     {
-        IStep GetContainerStartStep(ContainerInfo container);
-        IStep GetContainerStopStep(ContainerInfo container);
+        Task StartContainerAsync(IExecutionContext executionContext, object data);
+        Task StopContainerAsync(IExecutionContext executionContext, object data);
     }
 
     public class ContainerOperationProvider : AgentService, IContainerOperationProvider
@@ -29,23 +29,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             _dockerManger = HostContext.GetService<IDockerCommandManager>();
         }
 
-        public IStep GetContainerStartStep(ContainerInfo container)
-        {
-            return new JobExtensionRunner(runAsync: StartContainerAsync,
-                                          condition: ExpressionManager.Succeeded,
-                                          displayName: StringUtil.Loc("InitializeContainer"),
-                                          data: (object)container);
-        }
-
-        public IStep GetContainerStopStep(ContainerInfo container)
-        {
-            return new JobExtensionRunner(runAsync: StopContainerAsync,
-                                          condition: ExpressionManager.Always,
-                                          displayName: StringUtil.Loc("StopContainer"),
-                                          data: (object)container);
-        }
-
-        private async Task StartContainerAsync(IExecutionContext executionContext, object data)
+        public async Task StartContainerAsync(IExecutionContext executionContext, object data)
         {
             Trace.Entering();
             ArgUtil.NotNull(executionContext, nameof(executionContext));
@@ -134,8 +118,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
                 // Mount folder into container
 #if OS_WINDOWS
+                // TODO: We need to map everything into C:\ on Windows, if the agent is on D:\ then volume mount will fail since there is no D:\ inside container.
                 container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Externals)));
                 container.MountVolumes.Add(new MountVolume(HostContext.GetDirectory(WellKnownDirectory.Work)));
+                container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_ToolsDirectory));
 #else
                 container.MountVolumes.Add(new MountVolume(Path.GetDirectoryName(executionContext.Variables.System_DefaultWorkingDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))));
                 container.MountVolumes.Add(new MountVolume(executionContext.Variables.Agent_TempDirectory));
@@ -277,7 +263,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 #endif
         }
 
-        private async Task StopContainerAsync(IExecutionContext executionContext, object data)
+        public async Task StopContainerAsync(IExecutionContext executionContext, object data)
         {
             Trace.Entering();
             ArgUtil.NotNull(executionContext, nameof(executionContext));

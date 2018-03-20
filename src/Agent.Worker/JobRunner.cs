@@ -146,12 +146,18 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 jobContext.Variables.Set(Constants.Variables.Agent.WorkFolder, IOUtil.GetWorkPath(HostContext));
                 jobContext.Variables.Set(Constants.Variables.System.WorkFolder, IOUtil.GetWorkPath(HostContext));
 
-                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY")))
+                string toolsDirectory = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? Environment.GetEnvironmentVariable(Constants.Variables.Agent.ToolsDirectory);
+                if (string.IsNullOrEmpty(toolsDirectory))
                 {
-                    string toolsDirectory = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Work), Constants.Path.ToolDirectory);
+                    toolsDirectory = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Work), Constants.Path.ToolDirectory);
                     Directory.CreateDirectory(toolsDirectory);
-                    jobContext.Variables.Set(Constants.Variables.Agent.ToolsDirectory, toolsDirectory);
                 }
+                else
+                {
+                    Trace.Info($"Set tool cache directory base on environment: '{toolsDirectory}'");
+                    Directory.CreateDirectory(toolsDirectory);
+                }
+                jobContext.Variables.Set(Constants.Variables.Agent.ToolsDirectory, toolsDirectory);
 
                 // Setup TEMP directories
                 _tempDirectoryManager = HostContext.GetService<ITempDirectoryManager>();
@@ -501,7 +507,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             {
                 string taskDefinitionsUrl = message.Variables[WellKnownDistributedTaskVariables.TaskDefinitionsUrl].Value;
                 message.Variables[WellKnownDistributedTaskVariables.TaskDefinitionsUrl] = ReplaceWithConfigUriBase(new Uri(taskDefinitionsUrl)).AbsoluteUri;
-                Trace.Info($"Ensure System.TaskDefinitionsUrl match config url base. {message.Variables[WellKnownDistributedTaskVariables.TaskDefinitionsUrl]}");
+                Trace.Info($"Ensure System.TaskDefinitionsUrl match config url base. {message.Variables[WellKnownDistributedTaskVariables.TaskDefinitionsUrl].Value}");
             }
 
             if (message.Variables.ContainsKey(WellKnownDistributedTaskVariables.TFCollectionUrl))

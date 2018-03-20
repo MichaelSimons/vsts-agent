@@ -193,7 +193,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             builder.AppendLine($"OS: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
             builder.AppendLine("Steps:");
 
-            foreach (Pipelines.TaskStep task in steps.Where(x => x.Type == Pipelines.StepType.Task))
+            foreach (Pipelines.TaskStep task in steps.OfType<Pipelines.TaskStep>())
             {
                 builder.AppendLine($"\tName: {task.Reference.Name} Version: {task.Reference.Version}");
             }
@@ -282,7 +282,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             builder.AppendLine($"OS: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
             builder.AppendLine("Steps:");
 
-            foreach (Pipelines.TaskStep task in steps.Where(x => x.Type == Pipelines.StepType.Task))
+            foreach (Pipelines.TaskStep task in steps.OfType<Pipelines.TaskStep>())
             {
                 builder.AppendLine($"\tName: {task.Reference.Name} Version: {task.Reference.Version}");
             }
