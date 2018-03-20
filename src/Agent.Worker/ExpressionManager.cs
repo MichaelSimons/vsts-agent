@@ -63,7 +63,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             public void Info(string message)
             {
                 _trace.Info(message);
-                _executionContext?.Debug(message);
+                _executionContext?.Output(message);
             }
 
             public void Verbose(string message)
